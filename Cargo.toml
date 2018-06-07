@@ -1,0 +1,43 @@
+[package]
+name = "indradb-postgres"
+version = "0.14.0"
+authors = ["Yusuf Simonson <simonson@gmail.com>"]
+description = "A postgres-backed datastore for IndraDB"
+homepage = "https://indradb.github.io"
+repository = "https://github.com/indradb/postgres"
+keywords = ["graph", "database"]
+categories = ["database", "database-implementations"]
+license = "MPL-2.0"
+
+[badges]
+travis-ci = { repository = "indradb/postgres", branch = "master" }
+
+[lib]
+name = "indradb_postgres"
+path = "src/lib.rs"
+
+[features]
+default = []
+test-suite = ["indradb-lib/test-suite"]
+bench-suite = ["indradb-lib/bench-suite"]
+
+[dependencies]
+postgres = "0.15"
+r2d2 = "0.8"
+r2d2_postgres = "0.14"
+num_cpus = "^1.8.0"
+rust-crypto = "~0.2.36"
+serde = "^1.0.27"
+serde_json = "^1.0.9"
+serde_derive = "^1.0.27"
+libc = "0.2.26"
+rand = "~0.4.2"
+regex = "~0.2.5"
+lazy_static = "^1.0.0"
+byteorder = "^1.2.1"
+chrono = { version = "0.4.0", features = ["serde"] }
+uuid = { version = ">=0.5,<0.6", features = ["serde", "v1"] }
+
+[dependencies.indradb-lib]
+git = "https://github.com/indradb/indradb"
+branch = "no-pg"

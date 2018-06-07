@@ -1,10 +1,8 @@
 use super::schema;
-use super::super::{Datastore, EdgeDirection, EdgeQuery, Transaction, VertexQuery};
+use indradb::{Datastore, EdgeDirection, EdgeQuery, Transaction, VertexQuery, Error, Result, Vertex, Type, EdgeKey, Edge, VertexMetadata, EdgeMetadata};
 use super::util::CTEQueryBuilder;
 use chrono::DateTime;
 use chrono::offset::Utc;
-use errors::{Error, Result};
-use models;
 use num_cpus;
 use postgres;
 use postgres::types::ToSql;
@@ -14,7 +12,7 @@ use serde_json::Value as JsonValue;
 use std::cmp::min;
 use std::i64;
 use std::mem;
-use util::generate_uuid_v1;
+use indradb::util::generate_uuid_v1;
 use uuid::Uuid;
 
 /// A datastore that is backed by a postgres database.
@@ -47,7 +45,7 @@ impl PostgresDatastore {
     /// Creates a new postgres-backed datastore.
     ///
     /// # Arguments
-    /// * `connetion_string` - The postgres database connection string.
+    /// * `connection_string` - The postgres database connection string.
     pub fn create_schema(connection_string: String) -> Result<()> {
         let conn = postgres::Connection::connect(connection_string, postgres::TlsMode::None)
             .map_err(|err| Error::with_chain(err, "Could not connect to the postgres database"))?;
@@ -224,7 +222,7 @@ impl PostgresTransaction {
 }
 
 impl Transaction for PostgresTransaction {
-    fn create_vertex(&self, vertex: &models::Vertex) -> Result<bool> {
+    fn create_vertex(&self, vertex: &Vertex) -> Result<bool> {
         // Because this command could fail, we need to set a savepoint to roll
         // back to, rather than spoiling the entire transaction
         let trans = self.trans.savepoint("create_vertex")?;
@@ -243,19 +241,19 @@ impl Transaction for PostgresTransaction {
         }
     }
 
-    fn get_vertices(&self, q: &VertexQuery) -> Result<Vec<models::Vertex>> {
+    fn get_vertices(&self, q: &VertexQuery) -> Result<Vec<Vertex>> {
         let mut sql_query_builder = CTEQueryBuilder::new();
         self.vertex_query_to_sql(q, &mut sql_query_builder);
         let (query, params) = sql_query_builder.into_query_payload("SELECT id, type FROM %t", vec![]);
         let params_refs: Vec<&ToSql> = params.iter().map(|x| &**x).collect();
 
         let results = self.trans.query(&query[..], &params_refs[..])?;
-        let mut vertices: Vec<models::Vertex> = Vec::new();
+        let mut vertices: Vec<Vertex> = Vec::new();
 
         for row in &results {
             let id: Uuid = row.get(0);
             let t_str: String = row.get(1);
-            let v = models::Vertex::with_id(id, models::Type::new(t_str).unwrap());
+            let v = Vertex::with_id(id, Type::new(t_str).unwrap());
             vertices.push(v);
         }
 
@@ -285,7 +283,7 @@ impl Transaction for PostgresTransaction {
         unreachable!();
     }
 
-    fn create_edge(&self, key: &models::EdgeKey) -> Result<bool> {
+    fn create_edge(&self, key: &EdgeKey) -> Result<bool> {
         let id = generate_uuid_v1();
 
         // Because this command could fail, we need to set a savepoint to roll
@@ -311,7 +309,7 @@ impl Transaction for PostgresTransaction {
         }
     }
 
-    fn get_edges(&self, q: &EdgeQuery) -> Result<Vec<models::Edge>> {
+    fn get_edges(&self, q: &EdgeQuery) -> Result<Vec<Edge>> {
         let mut sql_query_builder = CTEQueryBuilder::new();
         self.edge_query_to_sql(q, &mut sql_query_builder);
         let (query, params) = sql_query_builder.into_query_payload(
@@ -321,16 +319,16 @@ impl Transaction for PostgresTransaction {
         let params_refs: Vec<&ToSql> = params.iter().map(|x| &**x).collect();
 
         let results = self.trans.query(&query[..], &params_refs[..])?;
-        let mut edges: Vec<models::Edge> = Vec::new();
+        let mut edges: Vec<Edge> = Vec::new();
 
         for row in &results {
             let outbound_id: Uuid = row.get(0);
             let t_str: String = row.get(1);
             let inbound_id: Uuid = row.get(2);
             let update_datetime: DateTime<Utc> = row.get(3);
-            let t = models::Type::new(t_str).unwrap();
-            let key = models::EdgeKey::new(outbound_id, t, inbound_id);
-            let edge = models::Edge::new(key, update_datetime);
+            let t = Type::new(t_str).unwrap();
+            let key = EdgeKey::new(outbound_id, t, inbound_id);
+            let edge = Edge::new(key, update_datetime);
             edges.push(edge);
         }
 
@@ -350,21 +348,21 @@ impl Transaction for PostgresTransaction {
     fn get_edge_count(
         &self,
         id: Uuid,
-        type_filter: Option<&models::Type>,
-        direction: models::EdgeDirection,
+        type_filter: Option<&Type>,
+        direction: EdgeDirection,
     ) -> Result<u64> {
         let results = match (direction, type_filter) {
-            (models::EdgeDirection::Outbound, Some(t)) => self.trans.query(
+            (EdgeDirection::Outbound, Some(t)) => self.trans.query(
                 "SELECT COUNT(*) FROM edges WHERE outbound_id=$1 AND type=$2",
                 &[&id, &t.0],
             ),
-            (models::EdgeDirection::Outbound, None) => self.trans
+            (EdgeDirection::Outbound, None) => self.trans
                 .query("SELECT COUNT(*) FROM edges WHERE outbound_id=$1", &[&id]),
-            (models::EdgeDirection::Inbound, Some(t)) => self.trans.query(
+            (EdgeDirection::Inbound, Some(t)) => self.trans.query(
                 "SELECT COUNT(*) FROM edges WHERE inbound_id=$1 AND type=$2",
                 &[&id, &t.0],
             ),
-            (models::EdgeDirection::Inbound, None) => self.trans
+            (EdgeDirection::Inbound, None) => self.trans
                 .query("SELECT COUNT(*) FROM edges WHERE inbound_id=$1", &[&id]),
         }?;
 
@@ -376,7 +374,7 @@ impl Transaction for PostgresTransaction {
         unreachable!();
     }
 
-    fn get_vertex_metadata(&self, q: &VertexQuery, name: &str) -> Result<Vec<models::VertexMetadata>> {
+    fn get_vertex_metadata(&self, q: &VertexQuery, name: &str) -> Result<Vec<VertexMetadata>> {
         let mut sql_query_builder = CTEQueryBuilder::new();
         self.vertex_query_to_sql(q, &mut sql_query_builder);
         let (query, params) = sql_query_builder.into_query_payload(
@@ -390,7 +388,7 @@ impl Transaction for PostgresTransaction {
         for row in &results {
             let id: Uuid = row.get(0);
             let value: JsonValue = row.get(1);
-            metadata.push(models::VertexMetadata::new(id, value));
+            metadata.push(VertexMetadata::new(id, value));
         }
 
         Ok(metadata)
@@ -429,7 +427,7 @@ impl Transaction for PostgresTransaction {
         Ok(())
     }
 
-    fn get_edge_metadata(&self, q: &EdgeQuery, name: &str) -> Result<Vec<models::EdgeMetadata>> {
+    fn get_edge_metadata(&self, q: &EdgeQuery, name: &str) -> Result<Vec<EdgeMetadata>> {
         let mut sql_query_builder = CTEQueryBuilder::new();
         self.edge_query_to_sql(q, &mut sql_query_builder);
 
@@ -451,9 +449,9 @@ impl Transaction for PostgresTransaction {
             let t_str: String = row.get(1);
             let inbound_id: Uuid = row.get(2);
             let value: JsonValue = row.get(3);
-            let t = models::Type::new(t_str).unwrap();
-            let key = models::EdgeKey::new(outbound_id, t, inbound_id);
-            metadata.push(models::EdgeMetadata::new(key, value));
+            let t = Type::new(t_str).unwrap();
+            let key = EdgeKey::new(outbound_id, t, inbound_id);
+            metadata.push(EdgeMetadata::new(key, value));
         }
 
         Ok(metadata)
