@@ -14,6 +14,7 @@ use std::i64;
 use std::mem;
 use indradb::util::generate_uuid_v1;
 use uuid::Uuid;
+use indradb::ResultExt;
 
 /// A datastore that is backed by a postgres database.
 #[derive(Clone, Debug)]
@@ -34,10 +35,12 @@ impl PostgresDatastore {
             None => min(num_cpus::get() as u32, 128u32),
         };
 
-        let manager = PostgresConnectionManager::new(&*connection_string, TlsMode::None)?;
+        let manager = PostgresConnectionManager::new(&*connection_string, TlsMode::None)
+            .chain_err(|| "Could not create connection manager")?;
         let pool = Pool::builder()
             .max_size(unwrapped_pool_size)
-            .build(manager)?;
+            .build(manager)
+            .chain_err(|| "Could nto create connection pool")?;
 
         Ok(PostgresDatastore { pool: pool })
     }
@@ -48,10 +51,10 @@ impl PostgresDatastore {
     /// * `connection_string` - The postgres database connection string.
     pub fn create_schema(connection_string: String) -> Result<()> {
         let conn = postgres::Connection::connect(connection_string, postgres::TlsMode::None)
-            .map_err(|err| Error::with_chain(err, "Could not connect to the postgres database"))?;
+            .chain_err(|| "Could not connect to the postgres database")?;
 
         for statement in schema::SCHEMA.split(";") {
-            conn.execute(statement, &vec![])?;
+            conn.execute(statement, &vec![]).chain_err(|| "Could not execute statement")?;
         }
 
         Ok(())
@@ -60,7 +63,7 @@ impl PostgresDatastore {
 
 impl Datastore<PostgresTransaction> for PostgresDatastore {
     fn transaction(&self) -> Result<PostgresTransaction> {
-        let conn = self.pool.get()?;
+        let conn = self.pool.get().chain_err(|| "Could not get connection from the connection pool")?;
         let trans = PostgresTransaction::new(conn)?;
         Ok(trans)
     }
@@ -225,7 +228,7 @@ impl Transaction for PostgresTransaction {
     fn create_vertex(&self, vertex: &Vertex) -> Result<bool> {
         // Because this command could fail, we need to set a savepoint to roll
         // back to, rather than spoiling the entire transaction
-        let trans = self.trans.savepoint("create_vertex")?;
+        let trans = self.trans.savepoint("create_vertex").chain_err(|| "Could not set savepoint")?;
 
         let result = self.trans.execute(
             "INSERT INTO vertices (id, type) VALUES ($1, $2)",
@@ -247,7 +250,7 @@ impl Transaction for PostgresTransaction {
         let (query, params) = sql_query_builder.into_query_payload("SELECT id, type FROM %t", vec![]);
         let params_refs: Vec<&ToSql> = params.iter().map(|x| &**x).collect();
 
-        let results = self.trans.query(&query[..], &params_refs[..])?;
+        let results = self.trans.query(&query[..], &params_refs[..]).chain_err(|| "Could not execute query")?;
         let mut vertices: Vec<Vertex> = Vec::new();
 
         for row in &results {
@@ -268,12 +271,12 @@ impl Transaction for PostgresTransaction {
             vec![],
         );
         let params_refs: Vec<&ToSql> = params.iter().map(|x| &**x).collect();
-        self.trans.execute(&query[..], &params_refs[..])?;
+        self.trans.execute(&query[..], &params_refs[..]).chain_err(|| "Could not execute statement")?;
         Ok(())
     }
 
     fn get_vertex_count(&self) -> Result<u64> {
-        let results = self.trans.query("SELECT COUNT(*) FROM vertices", &[])?;
+        let results = self.trans.query("SELECT COUNT(*) FROM vertices", &[]).chain_err(|| "Could not execute query")?;
 
         for row in &results {
             let count: i64 = row.get(0);
@@ -288,7 +291,7 @@ impl Transaction for PostgresTransaction {
 
         // Because this command could fail, we need to set a savepoint to roll
         // back to, rather than spoiling the entire transaction
-        let trans = self.trans.savepoint("set_edge")?;
+        let trans = self.trans.savepoint("set_edge").chain_err(|| "Could not set savepoint")?;
 
         let results = trans.query(
             "
@@ -318,7 +321,7 @@ impl Transaction for PostgresTransaction {
         );
         let params_refs: Vec<&ToSql> = params.iter().map(|x| &**x).collect();
 
-        let results = self.trans.query(&query[..], &params_refs[..])?;
+        let results = self.trans.query(&query[..], &params_refs[..]).chain_err(|| "Could not execute query")?;
         let mut edges: Vec<Edge> = Vec::new();
 
         for row in &results {
@@ -341,7 +344,7 @@ impl Transaction for PostgresTransaction {
         let (query, params) =
             sql_query_builder.into_query_payload("DELETE FROM edges WHERE id IN (SELECT id FROM %t)", vec![]);
         let params_refs: Vec<&ToSql> = params.iter().map(|x| &**x).collect();
-        self.trans.execute(&query[..], &params_refs[..])?;
+        self.trans.execute(&query[..], &params_refs[..]).chain_err(|| "Could not execute statement")?;
         Ok(())
     }
 
@@ -364,7 +367,9 @@ impl Transaction for PostgresTransaction {
             ),
             (EdgeDirection::Inbound, None) => self.trans
                 .query("SELECT COUNT(*) FROM edges WHERE inbound_id=$1", &[&id]),
-        }?;
+        };
+
+        let results = results.chain_err(|| "Could not execute query")?;
 
         for row in &results {
             let count: i64 = row.get(0);
@@ -382,7 +387,7 @@ impl Transaction for PostgresTransaction {
             vec![Box::new(name.to_string())],
         );
         let params_refs: Vec<&ToSql> = params.iter().map(|x| &**x).collect();
-        let results = self.trans.query(&query[..], &params_refs[..])?;
+        let results = self.trans.query(&query[..], &params_refs[..]).chain_err(|| "Could not execute query")?;
         let mut metadata = Vec::new();
 
         for row in &results {
@@ -411,7 +416,7 @@ impl Transaction for PostgresTransaction {
             ],
         );
         let params_refs: Vec<&ToSql> = params.iter().map(|x| &**x).collect();
-        self.trans.execute(&query[..], &params_refs[..])?;
+        self.trans.execute(&query[..], &params_refs[..]).chain_err(|| "Could not execute statement")?;
         Ok(())
     }
 
@@ -423,7 +428,7 @@ impl Transaction for PostgresTransaction {
             vec![Box::new(name.to_string())],
         );
         let params_refs: Vec<&ToSql> = params.iter().map(|x| &**x).collect();
-        self.trans.execute(&query[..], &params_refs[..])?;
+        self.trans.execute(&query[..], &params_refs[..]).chain_err(|| "Could not execute statement")?;
         Ok(())
     }
 
@@ -441,7 +446,7 @@ impl Transaction for PostgresTransaction {
         );
 
         let params_refs: Vec<&ToSql> = params.iter().map(|x| &**x).collect();
-        let results = self.trans.query(&query[..], &params_refs[..])?;
+        let results = self.trans.query(&query[..], &params_refs[..]).chain_err(|| "Could not execute query")?;
         let mut metadata = Vec::new();
 
         for row in &results {
@@ -474,7 +479,7 @@ impl Transaction for PostgresTransaction {
             ],
         );
         let params_refs: Vec<&ToSql> = params.iter().map(|x| &**x).collect();
-        self.trans.execute(&query[..], &params_refs[..])?;
+        self.trans.execute(&query[..], &params_refs[..]).chain_err(|| "Could not execute statement")?;
         Ok(())
     }
 
@@ -486,7 +491,7 @@ impl Transaction for PostgresTransaction {
             vec![Box::new(name.to_string())],
         );
         let params_refs: Vec<&ToSql> = params.iter().map(|x| &**x).collect();
-        self.trans.execute(&query[..], &params_refs[..])?;
+        self.trans.execute(&query[..], &params_refs[..]).chain_err(|| "Could not execute statement")?;
         Ok(())
     }
 }
