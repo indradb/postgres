@@ -63,9 +63,8 @@ env:
   global:
     - RUST_BACKTRACE=1
 
-script:
-  - source ~/.cargo/env || true
-  - cargo test --features=test-suite
+before_script: ./ci/before_script.sh
+script: cargo test --features=test-suite
 
 cache:
   directories:
