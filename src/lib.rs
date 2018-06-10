@@ -10,6 +10,9 @@
 //! * Thanks to foreign keys et al., this is probably less buggy than other
 //!   implementations.
 
+#![recursion_limit = "1024"]
+#![cfg_attr(feature = "bench-suite", feature(test))]
+
 extern crate chrono;
 #[macro_use]
 extern crate indradb;
@@ -26,8 +29,6 @@ mod schema;
 mod util;
 
 pub use self::datastore::{PostgresDatastore, PostgresTransaction};
-
-use indradb::tests;
 
 #[cfg(feature = "bench-suite")]
 full_bench_impl!(instance::datastore());
