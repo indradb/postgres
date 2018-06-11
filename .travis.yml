@@ -12,45 +12,36 @@ matrix:
     - rust: stable
       env:
       - TARGET=x86_64-unknown-linux-gnu
-      - PKG_CONFIG_PATH=/usr/lib/pkgconfig:$PKG_CONFIG_PATH
       - PG_USER=postgres
       - TEST_POSTGRES_URL="postgres://$PG_USER@localhost:5432/indradb_test"
-      - PATH=$HOME/.local/bin:$PATH
     - os: osx
       rust: stable
       env:
       - TARGET=x86_64-apple-darwin
       - PG_USER=travis
       - TEST_POSTGRES_URL="postgres://$PG_USER@localhost:5432/indradb_test"
-      - PATH=$HOME/Library/Python/2.7/bin:$PATH
 
     # Rust beta
     - rust: beta
       env:
       - TARGET=x86_64-unknown-linux-gnu
-      - PKG_CONFIG_PATH=/usr/lib/pkgconfig:$PKG_CONFIG_PATH
       - PG_USER=postgres
       - TEST_POSTGRES_URL="postgres://$PG_USER@localhost:5432/indradb_test"
-      - PATH=$HOME/.local/bin:$PATH
 
     # Rust nightly
     - rust: nightly
       env:
       - TARGET=x86_64-unknown-linux-gnu
-      - PKG_CONFIG_PATH=/usr/lib/pkgconfig:$PKG_CONFIG_PATH
       - PG_USER=postgres
       - TEST_POSTGRES_URL="postgres://$PG_USER@localhost:5432/indradb_test"
-      - PATH=$HOME/.local/bin:$PATH
 
   allow_failures:
     # Rust nightly
     - rust: nightly
       env:
       - TARGET=x86_64-unknown-linux-gnu
-      - PKG_CONFIG_PATH=/usr/lib/pkgconfig:$PKG_CONFIG_PATH
       - PG_USER=postgres
       - TEST_POSTGRES_URL="postgres://$PG_USER@localhost:5432/indradb_test"
-      - PATH=$HOME/.local/bin:$PATH
 
 env:
   global:
