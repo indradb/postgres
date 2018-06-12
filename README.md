@@ -1,4 +1,4 @@
-# IndraDB Postgres Implementation [![Docs](https://docs.rs/indradb-postgres/badge.svg)](https://docs.rs/indradb-postgres) [![Build Status](https://travis-ci.org/indradb/postgres.svg?branch=master)]
+# IndraDB Postgres Implementation [![Docs](https://docs.rs/indradb-postgres/badge.svg)](https://docs.rs/indradb-postgres) [![Build Status](https://travis-ci.org/indradb/postgres.svg?branch=master)](https://travis-ci.org/indradb/postgres)
 
 This is an implementation of the IndraDB datastore for postgres. It should
 generally be considered by far the slowest datastore implementation available,
